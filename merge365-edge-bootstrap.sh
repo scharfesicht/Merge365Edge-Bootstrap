@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 export LC_ALL=C
 umask 077
-BOOTSTRAP_VERSION="1.0.2"
+BOOTSTRAP_VERSION="1.0.3"
 INSTALLER_REPO="${INSTALLER_REPO:-scharfesicht/Merge365Edge-Installer}"
 WORK_DIR="${WORK_DIR:-/tmp/merge365edge-bootstrap}"
 log(){ printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
