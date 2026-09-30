@@ -3,7 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 export LC_ALL=C
 umask 077
-BOOTSTRAP_VERSION="1.0.0"
+BOOTSTRAP_VERSION="1.0.1"
 INSTALLER_REPO="${INSTALLER_REPO:-scharfesicht/Merge365Edge-Installer}"
 WORK_DIR="${WORK_DIR:-/tmp/merge365edge-bootstrap}"
 log(){ printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
@@ -14,9 +14,36 @@ apt_get(){ apt-get -o DPkg::Lock::Timeout=300 -o Acquire::Retries=4 "$@"; }
 curl_retry(){ curl --retry 5 --retry-delay 2 --retry-all-errors --connect-timeout 15 --max-time 240 "$@"; }
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "Run with sudo/root."
 
+disable_stale_cdrom_sources(){
+  local f tmp stamp
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+    [[ -f "$f" ]] || continue
+    if grep -qiE '^[[:space:]]*deb([^#]*)(cdrom:|file:/+cdrom)' "$f"; then
+      cp -a "$f" "${f}.bak.merge365edge.${stamp}"
+      sed -i -E '/^[[:space:]]*#/! {/cdrom:|file:\/+cdrom/I s|^|# disabled by Merge365 Edge bootstrap: |;}' "$f"
+      log "Disabled stale CD-ROM APT source in $f"
+    fi
+  done
+  for f in /etc/apt/sources.list.d/*.sources; do
+    [[ -f "$f" ]] || continue
+    if grep -qiE '(^|[[:space:]])(cdrom:|file:/+cdrom)' "$f"; then
+      cp -a "$f" "${f}.bak.merge365edge.${stamp}"
+      tmp="$(mktemp)"
+      awk 'BEGIN{RS=""; ORS="\n\n"} {x=tolower($0); if (x ~ /cdrom:/ || x ~ /file:\/\/\/+cdrom/ || x ~ /file:\/+cdrom/) next; print}' "$f" > "$tmp"
+      cat "$tmp" > "$f"; rm -f "$tmp"
+      log "Disabled stale CD-ROM APT stanza in $f"
+    fi
+  done
+}
+
+disable_stale_cdrom_sources
+
 for cmd in curl jq sha256sum tar; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
+    export NEEDRESTART_MODE=l
+    disable_stale_cdrom_sources
     apt_get update -y
     apt_get install -y --no-upgrade curl jq coreutils tar ca-certificates
     break
